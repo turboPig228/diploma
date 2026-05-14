@@ -1,0 +1,1345 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>LoanGuard DSS — Система принятия решений</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+
+  <style>
+    /* ─── Reset & Variables ─────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #080b0f;
+      --surface:   #0e1217;
+      --card:      #131920;
+      --border:    #1e2630;
+      --border2:   #2a3540;
+      --amber:     #f5a623;
+      --amber-dim: #c07d10;
+      --amber-glow:rgba(245,166,35,.18);
+      --green:     #2ea84a;
+      --red:       #e03e3e;
+      --yellow:    #d4aa00;
+      --blue:      #2d7ff9;
+      --text:      #d8e2ec;
+      --muted:     #5a6a78;
+      --mono: 'IBM Plex Mono', monospace;
+      --sans: 'DM Sans', sans-serif;
+      --display: 'Syne', sans-serif;
+      --radius: 6px;
+      --transition: .18s ease;
+    }
+
+    html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--sans); overflow: hidden; }
+
+    /* ─── Scrollbar ─────────────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: var(--surface); }
+    ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
+
+    /* ─── Screen system ─────────────────────────────────────────────────── */
+    .screen { display: none; width: 100%; height: 100%; }
+    .screen.active { display: flex; }
+
+    /* ══════════════════════════════════════════════════════════════════════
+       LOGIN
+    ══════════════════════════════════════════════════════════════════════ */
+    #screen-login {
+      align-items: center; justify-content: center;
+      background: var(--bg);
+      position: relative; overflow: hidden;
+    }
+
+    .login-grid {
+      position: absolute; inset: 0;
+      background-image:
+              linear-gradient(var(--border) 1px, transparent 1px),
+              linear-gradient(90deg, var(--border) 1px, transparent 1px);
+      background-size: 48px 48px;
+      opacity: .35;
+      mask-image: radial-gradient(ellipse 70% 70% at 50% 50%, black 30%, transparent 100%);
+    }
+
+    .login-box {
+      position: relative; z-index: 1;
+      width: 400px;
+      background: var(--card);
+      border: 1px solid var(--border2);
+      border-radius: 12px;
+      padding: 44px 40px 40px;
+      box-shadow: 0 0 80px rgba(0,0,0,.6), 0 0 0 1px rgba(245,166,35,.06);
+      animation: fadeUp .5s ease;
+    }
+
+    @keyframes fadeUp {
+      from { opacity:0; transform:translateY(24px); }
+      to   { opacity:1; transform:translateY(0); }
+    }
+
+    .login-logo {
+      display: flex; align-items: center; gap: 12px; margin-bottom: 32px;
+    }
+    .login-logo-icon {
+      width: 40px; height: 40px;
+      background: var(--amber); border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px;
+    }
+    .login-logo-text { font-family: var(--display); font-weight: 800; font-size: 22px; letter-spacing: -.3px; }
+    .login-logo-sub  { font-size: 11px; color: var(--muted); font-family: var(--mono); margin-top: 1px; }
+
+    .login-title { font-family: var(--display); font-size: 26px; font-weight: 700; margin-bottom: 6px; }
+    .login-sub   { font-size: 13px; color: var(--muted); margin-bottom: 28px; }
+
+    .field-group { margin-bottom: 16px; }
+    .field-group label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; font-family: var(--mono); letter-spacing: .04em; }
+    .field-group input {
+      width: 100%; background: var(--surface); border: 1px solid var(--border2);
+      border-radius: var(--radius); color: var(--text); padding: 10px 14px;
+      font-family: var(--sans); font-size: 14px; outline: none;
+      transition: border-color var(--transition), box-shadow var(--transition);
+    }
+    .field-group input:focus {
+      border-color: var(--amber);
+      box-shadow: 0 0 0 3px var(--amber-glow);
+    }
+
+    .btn-primary {
+      width: 100%; background: var(--amber); color: #000;
+      border: none; border-radius: var(--radius); padding: 11px 20px;
+      font-family: var(--display); font-weight: 700; font-size: 15px;
+      cursor: pointer; letter-spacing: .02em;
+      transition: background var(--transition), transform var(--transition), box-shadow var(--transition);
+      margin-top: 4px;
+    }
+    .btn-primary:hover { background: #ffc040; box-shadow: 0 0 20px rgba(245,166,35,.35); }
+    .btn-primary:active { transform: scale(.98); }
+    .btn-primary:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+
+    .login-error {
+      background: rgba(224,62,62,.12); border: 1px solid rgba(224,62,62,.3);
+      border-radius: var(--radius); padding: 10px 14px;
+      font-size: 13px; color: #ff7070; margin-bottom: 16px; display: none;
+    }
+    .login-toggle { text-align: center; margin-top: 18px; font-size: 13px; color: var(--muted); }
+    .login-toggle a { color: var(--amber); text-decoration: none; cursor: pointer; }
+    .login-toggle a:hover { text-decoration: underline; }
+
+    /* ══════════════════════════════════════════════════════════════════════
+       MAIN APP LAYOUT
+    ══════════════════════════════════════════════════════════════════════ */
+    #screen-app {
+      flex-direction: row;
+    }
+
+    /* ─── Sidebar ───────────────────────────────────────────────────────── */
+    .sidebar {
+      width: 220px; min-width: 220px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      padding: 0; height: 100%;
+    }
+
+    .sidebar-logo {
+      padding: 22px 20px 18px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 10px;
+    }
+    .logo-badge {
+      width: 32px; height: 32px; background: var(--amber); border-radius: 7px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px; flex-shrink: 0;
+    }
+    .logo-name { font-family: var(--display); font-weight: 800; font-size: 16px; }
+    .logo-ver  { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+
+    .sidebar-nav { flex: 1; padding: 16px 10px; display: flex; flex-direction: column; gap: 2px; }
+    .nav-item {
+      display: flex; align-items: center; gap: 11px;
+      padding: 10px 12px; border-radius: var(--radius);
+      cursor: pointer; font-size: 13.5px; font-weight: 400;
+      color: var(--muted); transition: all var(--transition);
+      border: 1px solid transparent; user-select: none;
+    }
+    .nav-item:hover   { color: var(--text); background: rgba(255,255,255,.04); }
+    .nav-item.active  { color: var(--amber); background: var(--amber-glow); border-color: rgba(245,166,35,.2); font-weight: 500; }
+    .nav-icon { font-size: 16px; width: 20px; text-align: center; }
+
+    .nav-section { font-family: var(--mono); font-size: 10px; color: var(--muted); letter-spacing: .1em; padding: 12px 12px 4px; opacity: .6; }
+
+    .sidebar-footer {
+      border-top: 1px solid var(--border); padding: 14px 16px;
+    }
+    .user-info { display: flex; align-items: center; gap: 10px; }
+    .user-avatar {
+      width: 32px; height: 32px; border-radius: 50%;
+      background: linear-gradient(135deg, var(--amber) 0%, var(--amber-dim) 100%);
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--display); font-weight: 700; font-size: 13px; color: #000;
+    }
+    .user-name { font-size: 13px; font-weight: 500; }
+    .user-role { font-size: 11px; color: var(--muted); font-family: var(--mono); }
+    .btn-logout {
+      margin-top: 10px; width: 100%; background: transparent;
+      border: 1px solid var(--border2); border-radius: var(--radius);
+      color: var(--muted); padding: 7px; font-size: 12px; cursor: pointer;
+      font-family: var(--sans); transition: all var(--transition);
+    }
+    .btn-logout:hover { color: var(--red); border-color: rgba(224,62,62,.4); }
+
+    /* ─── WS Status ─────────────────────────────────────────────────────── */
+    .ws-status {
+      display: flex; align-items: center; gap: 6px;
+      font-family: var(--mono); font-size: 10px; color: var(--muted);
+      padding: 0 16px 12px;
+    }
+    .ws-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+    .ws-dot.connected { background: var(--green); box-shadow: 0 0 6px var(--green); animation: pulse 2s infinite; }
+    .ws-dot.error     { background: var(--red); }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+
+    /* ─── Main content ──────────────────────────────────────────────────── */
+    .main-content {
+      flex: 1; overflow-y: auto; height: 100%;
+      display: flex; flex-direction: column;
+    }
+
+    .page { display: none; flex: 1; padding: 28px 32px; }
+    .page.active { display: block; }
+
+    .page-header { margin-bottom: 28px; }
+    .page-title  { font-family: var(--display); font-size: 24px; font-weight: 700; }
+    .page-sub    { font-size: 13px; color: var(--muted); margin-top: 4px; }
+
+    /* ══════════════════════════════════════════════════════════════════════
+       PREDICTION FORM
+    ══════════════════════════════════════════════════════════════════════ */
+    .form-layout {
+      display: grid;
+      grid-template-columns: 1fr 360px;
+      gap: 20px;
+      align-items: start;
+    }
+
+    .form-sections { display: flex; flex-direction: column; gap: 16px; }
+
+    .section-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 10px; overflow: hidden;
+    }
+    .section-head {
+      padding: 13px 18px;
+      background: rgba(255,255,255,.025);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 10px;
+    }
+    .section-head-icon { font-size: 15px; }
+    .section-head-title { font-family: var(--display); font-weight: 600; font-size: 13.5px; }
+    .section-head-count { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-left: auto; }
+
+    .section-body { padding: 18px; }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .form-grid.cols3 { grid-template-columns: 1fr 1fr 1fr; }
+    .form-grid.cols1 { grid-template-columns: 1fr; }
+
+    .form-field { display: flex; flex-direction: column; gap: 5px; }
+    .form-field label {
+      font-size: 11px; color: var(--muted);
+      font-family: var(--mono); letter-spacing: .04em;
+    }
+    .form-field input,
+    .form-field select {
+      background: var(--surface); border: 1px solid var(--border2);
+      border-radius: var(--radius); color: var(--text);
+      padding: 8px 11px; font-family: var(--sans); font-size: 13px; outline: none;
+      transition: border-color var(--transition), box-shadow var(--transition);
+      -webkit-appearance: none;
+    }
+    .form-field select {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%235a6a78' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 10px center;
+      padding-right: 30px; cursor: pointer;
+    }
+    .form-field select option { background: var(--card); }
+    .form-field input:focus,
+    .form-field select:focus {
+      border-color: var(--amber); box-shadow: 0 0 0 3px var(--amber-glow);
+    }
+    .form-field input.invalid { border-color: var(--red); }
+
+    /* ─── Result panel ──────────────────────────────────────────────────── */
+    .result-panel {
+      position: sticky; top: 0;
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 10px; overflow: hidden;
+    }
+    .result-head {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255,255,255,.025);
+      display: flex; align-items: center; gap: 10px;
+    }
+    .result-head-title { font-family: var(--display); font-weight: 600; font-size: 14px; }
+    .result-body { padding: 20px 18px; }
+
+    /* Pending state */
+    .result-pending {
+      text-align: center; padding: 32px 20px;
+      color: var(--muted); font-size: 13px;
+    }
+    .result-pending .pending-icon { font-size: 32px; margin-bottom: 12px; opacity: .4; }
+
+    /* Processing state */
+    .result-processing {
+      text-align: center; padding: 32px 20px;
+      display: none;
+    }
+    .spinner {
+      width: 36px; height: 36px; margin: 0 auto 14px;
+      border: 3px solid var(--border2); border-top-color: var(--amber);
+      border-radius: 50%; animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .processing-text { font-size: 13px; color: var(--muted); }
+    .processing-id   { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-top: 6px; opacity: .6; }
+
+    /* Result state */
+    .result-data { display: none; }
+
+    .decision-badge {
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+      padding: 16px; border-radius: 8px; margin-bottom: 16px;
+      font-family: var(--display); font-size: 18px; font-weight: 700;
+      letter-spacing: .02em;
+      animation: revealBadge .4s ease;
+    }
+    @keyframes revealBadge {
+      from { opacity:0; transform:scale(.9); }
+      to   { opacity:1; transform:scale(1); }
+    }
+    .decision-badge.approved { background: rgba(46,168,74,.15); color: #4cda6e; border: 1px solid rgba(46,168,74,.35); }
+    .decision-badge.rejected { background: rgba(224,62,62,.12); color: #ff6b6b; border: 1px solid rgba(224,62,62,.3); }
+    .decision-badge.review   { background: rgba(212,170,0,.12); color: #f0c040; border: 1px solid rgba(212,170,0,.3); }
+
+    .result-metrics { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
+    .metric-row {
+      display: flex; justify-content: space-between; align-items: center;
+      font-size: 12px;
+    }
+    .metric-label { color: var(--muted); }
+    .metric-value { font-family: var(--mono); font-size: 13px; font-weight: 500; }
+
+    .prob-bar-wrap { margin-bottom: 16px; }
+    .prob-bar-label { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); font-family: var(--mono); margin-bottom: 5px; }
+    .prob-bar-track { height: 5px; background: var(--border2); border-radius: 3px; overflow: hidden; }
+    .prob-bar-fill  { height: 100%; border-radius: 3px; transition: width .8s cubic-bezier(.4,0,.2,1); }
+    .prob-bar-fill.loan  { background: linear-gradient(90deg, var(--amber-dim), var(--amber)); }
+    .prob-bar-fill.fraud { background: linear-gradient(90deg, #c04040, var(--red)); }
+
+    .fraud-badge {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 14px; border-radius: var(--radius); font-size: 13px; font-weight: 500;
+      margin-bottom: 16px;
+    }
+    .fraud-badge.low    { background: rgba(46,168,74,.1);  color: #4cda6e; border: 1px solid rgba(46,168,74,.25); }
+    .fraud-badge.medium { background: rgba(212,170,0,.1);  color: #f0c040; border: 1px solid rgba(212,170,0,.25); }
+    .fraud-badge.high   { background: rgba(224,62,62,.12); color: #ff6b6b; border: 1px solid rgba(224,62,62,.3);  }
+
+    .flags-list { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
+    .flag-item {
+      display: flex; align-items: flex-start; gap: 7px;
+      font-size: 11.5px; color: var(--muted); line-height: 1.4;
+    }
+    .flag-item::before { content: '⚑'; color: var(--red); flex-shrink: 0; margin-top: 1px; }
+
+    .reasons-list { display: flex; flex-direction: column; gap: 5px; }
+    .reason-item {
+      display: flex; align-items: flex-start; gap: 7px;
+      font-size: 11.5px; color: var(--muted); line-height: 1.4;
+    }
+    .reason-item::before { content: '✕'; color: var(--red); flex-shrink: 0; font-size: 10px; margin-top: 2px; }
+
+    .result-section-title { font-family: var(--mono); font-size: 10px; color: var(--muted); letter-spacing: .08em; margin-bottom: 8px; opacity: .7; }
+
+    .result-meta { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; }
+
+    /* Submit button */
+    .submit-wrap { padding: 16px 18px; border-top: 1px solid var(--border); }
+    .btn-submit {
+      width: 100%; background: var(--amber); color: #000;
+      border: none; border-radius: var(--radius); padding: 12px 20px;
+      font-family: var(--display); font-weight: 700; font-size: 15px;
+      cursor: pointer; letter-spacing: .02em;
+      transition: all var(--transition);
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    .btn-submit:hover { background: #ffc040; box-shadow: 0 0 24px rgba(245,166,35,.4); }
+    .btn-submit:active { transform: scale(.98); }
+    .btn-submit:disabled { opacity: .5; cursor: not-allowed; transform: none; box-shadow: none; }
+
+    /* ══════════════════════════════════════════════════════════════════════
+       HISTORY PAGE
+    ══════════════════════════════════════════════════════════════════════ */
+    .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 24px; }
+
+    .stat-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 10px; padding: 16px 18px;
+    }
+    .stat-label { font-family: var(--mono); font-size: 10px; color: var(--muted); letter-spacing: .06em; margin-bottom: 8px; }
+    .stat-value { font-family: var(--display); font-size: 26px; font-weight: 700; line-height: 1; }
+    .stat-sub   { font-size: 11px; color: var(--muted); margin-top: 4px; }
+    .stat-card.amber .stat-value { color: var(--amber); }
+    .stat-card.green .stat-value { color: var(--green); }
+    .stat-card.red   .stat-value { color: var(--red); }
+    .stat-card.blue  .stat-value { color: var(--blue); }
+
+    .history-toolbar {
+      display: flex; align-items: center; gap: 12px; margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    .filter-select {
+      background: var(--card); border: 1px solid var(--border2);
+      border-radius: var(--radius); color: var(--text); padding: 7px 30px 7px 11px;
+      font-family: var(--sans); font-size: 13px; outline: none; cursor: pointer;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%235a6a78' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 10px center;
+      -webkit-appearance: none;
+    }
+    .btn-refresh {
+      background: var(--card); border: 1px solid var(--border2);
+      border-radius: var(--radius); color: var(--muted); padding: 7px 14px;
+      font-family: var(--sans); font-size: 13px; cursor: pointer;
+      transition: all var(--transition); margin-left: auto;
+    }
+    .btn-refresh:hover { color: var(--text); border-color: var(--amber); }
+
+    .table-wrap {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 10px; overflow: hidden;
+    }
+    table { width: 100%; border-collapse: collapse; }
+    thead th {
+      text-align: left; padding: 11px 14px;
+      font-family: var(--mono); font-size: 10px; letter-spacing: .07em;
+      color: var(--muted); border-bottom: 1px solid var(--border);
+      background: rgba(255,255,255,.02);
+      white-space: nowrap;
+    }
+    tbody tr { border-bottom: 1px solid var(--border); transition: background var(--transition); }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: rgba(255,255,255,.025); }
+    tbody td { padding: 11px 14px; font-size: 12.5px; white-space: nowrap; }
+    .td-mono { font-family: var(--mono); font-size: 11px; }
+    .td-muted { color: var(--muted); }
+
+    .badge {
+      display: inline-flex; align-items: center;
+      padding: 3px 9px; border-radius: 4px; font-size: 11px; font-weight: 500;
+      font-family: var(--mono); white-space: nowrap;
+    }
+    .badge-approved { background: rgba(46,168,74,.15);  color: #4cda6e; }
+    .badge-rejected { background: rgba(224,62,62,.12);  color: #ff6b6b; }
+    .badge-review   { background: rgba(212,170,0,.12);  color: #f0c040; }
+    .badge-low      { background: rgba(46,168,74,.1);   color: #4cda6e; }
+    .badge-medium   { background: rgba(212,170,0,.1);   color: #f0c040; }
+    .badge-high     { background: rgba(224,62,62,.12);  color: #ff6b6b; }
+
+    .empty-state { padding: 48px; text-align: center; color: var(--muted); font-size: 13px; }
+    .empty-icon  { font-size: 28px; margin-bottom: 10px; opacity: .35; }
+
+    /* ─── Toast ─────────────────────────────────────────────────────────── */
+    #toast-container {
+      position: fixed; top: 20px; right: 20px;
+      display: flex; flex-direction: column; gap: 8px; z-index: 9999;
+    }
+    .toast {
+      display: flex; align-items: center; gap: 10px;
+      background: var(--card); border: 1px solid var(--border2);
+      border-radius: 8px; padding: 12px 16px; font-size: 13px;
+      box-shadow: 0 8px 32px rgba(0,0,0,.5);
+      animation: slideIn .3s ease;
+      max-width: 360px;
+    }
+    @keyframes slideIn {
+      from { opacity:0; transform:translateX(20px); }
+      to   { opacity:1; transform:translateX(0); }
+    }
+    .toast.success { border-left: 3px solid var(--green); }
+    .toast.error   { border-left: 3px solid var(--red); }
+    .toast.info    { border-left: 3px solid var(--amber); }
+  </style>
+</head>
+<body>
+
+<div id="toast-container"></div>
+
+<!-- ═══════════════════════════ LOGIN ════════════════════════════════ -->
+<div id="screen-login" class="screen active">
+  <div class="login-grid"></div>
+  <div class="login-box">
+    <div class="login-logo">
+      <div class="login-logo-icon">⚖</div>
+      <div>
+        <div class="login-logo-text">LoanGuard</div>
+        <div class="login-logo-sub">DSS v2.0 — CREDIT INTELLIGENCE</div>
+      </div>
+    </div>
+
+    <div id="login-error" class="login-error"></div>
+
+    <!-- Login form -->
+    <div id="form-login">
+      <div class="login-title">Вход в систему</div>
+      <div class="login-sub">Система поддержки принятия решений</div>
+      <div class="field-group">
+        <label>ЛОГИН</label>
+        <input id="login-username" type="text" placeholder="username" autocomplete="off"/>
+      </div>
+      <div class="field-group">
+        <label>ПАРОЛЬ</label>
+        <input id="login-password" type="password" placeholder="••••••"/>
+      </div>
+      <button class="btn-primary" onclick="handleLogin()">Войти</button>
+      <div class="login-toggle">Нет аккаунта? <a onclick="toggleAuthForm()">Зарегистрироваться</a></div>
+    </div>
+
+    <!-- Register form -->
+    <div id="form-register" style="display:none">
+      <div class="login-title">Регистрация</div>
+      <div class="login-sub">Создать аккаунт аналитика</div>
+      <div class="field-group">
+        <label>ЛОГИН</label>
+        <input id="reg-username" type="text" placeholder="username" autocomplete="off"/>
+      </div>
+      <div class="field-group">
+        <label>EMAIL</label>
+        <input id="reg-email" type="email" placeholder="user@example.com"/>
+      </div>
+      <div class="field-group">
+        <label>ПАРОЛЬ</label>
+        <input id="reg-password" type="password" placeholder="минимум 6 символов"/>
+      </div>
+      <button class="btn-primary" onclick="handleRegister()">Создать аккаунт</button>
+      <div class="login-toggle">Уже есть аккаунт? <a onclick="toggleAuthForm()">Войти</a></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ APP ══════════════════════════════════ -->
+<div id="screen-app" class="screen">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-badge">⚖</div>
+      <div>
+        <div class="logo-name">LoanGuard</div>
+        <div class="logo-ver">DSS v2.0</div>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-section">АНАЛИЗ</div>
+      <div class="nav-item active" onclick="showPage('predict', this)">
+        <span class="nav-icon">◈</span> Новая заявка
+      </div>
+      <div class="nav-section">ДАННЫЕ</div>
+      <div class="nav-item" onclick="showPage('history', this)">
+        <span class="nav-icon">≡</span> История
+      </div>
+    </nav>
+
+    <div class="ws-status">
+      <div class="ws-dot" id="ws-dot"></div>
+      <span id="ws-label">Нет соединения</span>
+    </div>
+
+    <div class="sidebar-footer">
+      <div class="user-info">
+        <div class="user-avatar" id="user-avatar">?</div>
+        <div>
+          <div class="user-name" id="user-name">—</div>
+          <div class="user-role" id="user-role">analyst</div>
+        </div>
+      </div>
+      <button class="btn-logout" onclick="logout()">Выйти из системы</button>
+    </div>
+  </aside>
+
+  <!-- Main content -->
+  <main class="main-content">
+
+    <!-- ── PREDICT PAGE ─────────────────────────────────────────── -->
+    <div id="page-predict" class="page active">
+      <div class="page-header">
+        <div class="page-title">Новая кредитная заявка</div>
+        <div class="page-sub">Заполните все поля. Результат отобразится справа через WebSocket.</div>
+      </div>
+
+      <div class="form-layout">
+        <div class="form-sections">
+
+          <!-- 1. Демографические -->
+          <div class="section-card">
+            <div class="section-head">
+              <span class="section-head-icon">👤</span>
+              <span class="section-head-title">Демографические данные</span>
+              <span class="section-head-count">6 полей</span>
+            </div>
+            <div class="section-body">
+              <div class="form-grid cols3">
+                <div class="form-field">
+                  <label>ВОЗРАСТ</label>
+                  <input type="number" id="f_age" min="18" max="100" placeholder="30"/>
+                </div>
+                <div class="form-field">
+                  <label>ИЖДИВЕНЦЫ</label>
+                  <input type="number" id="f_dependents" min="0" max="20" placeholder="0"/>
+                </div>
+                <div class="form-field">
+                  <label>СРОК ПО АДРЕСУ (МЕС)</label>
+                  <input type="number" id="f_address_duration" min="0" placeholder="24"/>
+                </div>
+              </div>
+              <div class="form-grid cols3" style="margin-top:14px">
+                <div class="form-field">
+                  <label>ПРОФЕССИЯ</label>
+                  <select id="f_occupation">
+                    <option value="">— выбрать —</option>
+                    <option>Engineer</option><option>Teacher</option><option>Doctor</option>
+                    <option>Lawyer</option><option>Accountant</option><option>Manager</option>
+                    <option>Unemployed</option><option>Self-employed</option><option>Other</option>
+                  </select>
+                </div>
+                <div class="form-field">
+                  <label>СЕМ. ПОЛОЖЕНИЕ</label>
+                  <select id="f_marital_status">
+                    <option value="">— выбрать —</option>
+                    <option>Single</option><option>Married</option>
+                    <option>Divorced</option><option>Widowed</option>
+                  </select>
+                </div>
+                <div class="form-field">
+                  <label>СТАТУС ЖИЛЬЯ</label>
+                  <select id="f_residential_status">
+                    <option value="">— выбрать —</option>
+                    <option>Own</option><option>Rent</option><option>Live with Parents</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 2. Финансовые -->
+          <div class="section-card">
+            <div class="section-head">
+              <span class="section-head-icon">💰</span>
+              <span class="section-head-title">Финансовые данные</span>
+              <span class="section-head-count">9 полей</span>
+            </div>
+            <div class="section-body">
+              <div class="form-grid">
+                <div class="form-field">
+                  <label>КРЕДИТНЫЙ РЕЙТИНГ (300–850)</label>
+                  <input type="number" id="f_credit_score" min="300" max="850" placeholder="700"/>
+                </div>
+                <div class="form-field">
+                  <label>ДОХОД В МЕСЯЦ</label>
+                  <input type="number" id="f_income_level" min="1" placeholder="50000"/>
+                </div>
+                <div class="form-field">
+                  <label>СУММА КРЕДИТА</label>
+                  <input type="number" id="f_loan_amount_requested" min="1" placeholder="200000"/>
+                </div>
+                <div class="form-field">
+                  <label>СРОК КРЕДИТА (МЕС)</label>
+                  <input type="number" id="f_loan_term" min="1" max="360" placeholder="24"/>
+                </div>
+                <div class="form-field">
+                  <label>ПРОЦЕНТНАЯ СТАВКА (%)</label>
+                  <input type="number" id="f_interest_rate" min="0" max="100" step="0.1" placeholder="5.5"/>
+                </div>
+                <div class="form-field">
+                  <label>ПРОШЛЫЕ КРЕДИТЫ</label>
+                  <input type="number" id="f_previous_loans" min="0" placeholder="1"/>
+                </div>
+                <div class="form-field">
+                  <label>ТЕКУЩИЕ ОБЯЗАТЕЛЬСТВА</label>
+                  <input type="number" id="f_existing_liabilities" min="0" placeholder="5000"/>
+                </div>
+                <div class="form-field">
+                  <label>ЦЕЛЬ КРЕДИТА</label>
+                  <select id="f_purpose_of_loan">
+                    <option value="">— выбрать —</option>
+                    <option value="home">Жильё (home)</option>
+                    <option value="auto">Авто (auto)</option>
+                    <option value="personal">Личные нужды (personal)</option>
+                    <option value="education">Образование (education)</option>
+                    <option value="travel">Путешествие (travel)</option>
+                    <option value="medical">Медицина (medical)</option>
+                    <option value="business">Бизнес (business)</option>
+                  </select>
+                </div>
+                <div class="form-field">
+                  <label>ЗАЛОГ</label>
+                  <select id="f_collateral">
+                    <option value="">— выбрать —</option>
+                    <option>Yes</option><option>No</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 3. Поведенческие -->
+          <div class="section-card">
+            <div class="section-head">
+              <span class="section-head-icon">📊</span>
+              <span class="section-head-title">Поведенческие признаки</span>
+              <span class="section-head-count">6 полей</span>
+            </div>
+            <div class="section-body">
+              <div class="form-grid cols3">
+                <div class="form-field">
+                  <label>ПОДАЧА ЗАЯВКИ</label>
+                  <select id="f_application_behavior">
+                    <option value="">— выбрать —</option>
+                    <option>Normal</option><option>Rapid</option>
+                  </select>
+                </div>
+                <div class="form-field">
+                  <label>МЕСТОПОЛОЖЕНИЕ</label>
+                  <select id="f_location_of_application">
+                    <option value="">— выбрать —</option>
+                    <option>Local</option><option>Unusual</option>
+                  </select>
+                </div>
+                <div class="form-field">
+                  <label>ИЗМЕНЕНИЕ ПОВЕДЕНИЯ</label>
+                  <select id="f_change_in_behavior">
+                    <option value="">— выбрать —</option>
+                    <option>No</option><option>Yes</option>
+                  </select>
+                </div>
+                <div class="form-field">
+                  <label>ВРЕМЯ ТРАНЗАКЦИИ (ЧЧ:ММ)</label>
+                  <input type="text" id="f_time_of_transaction" placeholder="10:30" maxlength="5"/>
+                </div>
+                <div class="form-field">
+                  <label>АКТИВНОСТЬ СЧЁТА</label>
+                  <select id="f_account_activity">
+                    <option value="">— выбрать —</option>
+                    <option>Normal</option><option>Unusual</option>
+                  </select>
+                </div>
+                <div class="form-field">
+                  <label>ИСТОРИЯ ПЛАТЕЖЕЙ</label>
+                  <select id="f_payment_behavior">
+                    <option value="">— выбрать —</option>
+                    <option>On-time</option><option>Late</option><option>Defaulted</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 4. Верификация и риски -->
+          <div class="section-card">
+            <div class="section-head">
+              <span class="section-head-icon">🛡</span>
+              <span class="section-head-title">Верификация и риски</span>
+              <span class="section-head-count">3 поля</span>
+            </div>
+            <div class="section-body">
+              <div class="form-grid cols3">
+                <div class="form-field">
+                  <label>ЧЁРНЫЙ СПИСОК</label>
+                  <select id="f_blacklists">
+                    <option value="">— выбрать —</option>
+                    <option>No</option><option>Yes</option>
+                  </select>
+                </div>
+                <div class="form-field">
+                  <label>ВЕРИФИКАЦИЯ ЗАНЯТОСТИ</label>
+                  <select id="f_employment_verification">
+                    <option value="">— выбрать —</option>
+                    <option>Verified</option><option>Not Verified</option>
+                  </select>
+                </div>
+                <div class="form-field">
+                  <label>ФИНАНСОВЫЕ НАРУШЕНИЯ</label>
+                  <select id="f_past_financial_malpractices">
+                    <option value="">— выбрать —</option>
+                    <option>No</option><option>Yes</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 5. Технические -->
+          <div class="section-card">
+            <div class="section-head">
+              <span class="section-head-icon">💻</span>
+              <span class="section-head-title">Технические данные</span>
+              <span class="section-head-count">4 поля</span>
+            </div>
+            <div class="section-body">
+              <div class="form-grid">
+                <div class="form-field">
+                  <label>УСТРОЙСТВО</label>
+                  <select id="f_device_information">
+                    <option value="">— выбрать —</option>
+                    <option>Laptop</option><option>Mobile</option>
+                    <option>Desktop</option><option>Tablet</option>
+                  </select>
+                </div>
+                <div class="form-field">
+                  <label>СОЦСЕТИ</label>
+                  <select id="f_social_media_footprint">
+                    <option value="">— выбрать —</option>
+                    <option>Yes</option><option>No</option>
+                  </select>
+                </div>
+                <div class="form-field">
+                  <label>СОГЛАСОВАННОСТЬ ДАННЫХ</label>
+                  <select id="f_consistency_in_data">
+                    <option value="">— выбрать —</option>
+                    <option>Consistent</option><option>Inconsistent</option>
+                  </select>
+                </div>
+                <div class="form-field">
+                  <label>ИСТОЧНИК ЗАЯВКИ</label>
+                  <select id="f_referral">
+                    <option value="">— выбрать —</option>
+                    <option>Online</option><option>Referral</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div><!-- /form-sections -->
+
+        <!-- Result panel -->
+        <div class="result-panel" id="result-panel">
+          <div class="result-head">
+            <span style="font-size:16px">◈</span>
+            <span class="result-head-title">Результат анализа</span>
+          </div>
+          <div class="result-body">
+            <!-- Pending -->
+            <div class="result-pending" id="result-pending">
+              <div class="pending-icon">◎</div>
+              Заполните форму и нажмите<br/>«Отправить на анализ»
+            </div>
+            <!-- Processing -->
+            <div class="result-processing" id="result-processing">
+              <div class="spinner"></div>
+              <div class="processing-text">Модели обрабатывают заявку...</div>
+              <div class="processing-id" id="processing-id"></div>
+            </div>
+            <!-- Data -->
+            <div class="result-data" id="result-data"></div>
+          </div>
+          <div class="submit-wrap">
+            <button class="btn-submit" id="btn-submit" onclick="submitPrediction()">
+              ◈ &nbsp;Отправить на анализ
+            </button>
+          </div>
+        </div>
+
+      </div><!-- /form-layout -->
+    </div><!-- /page-predict -->
+
+    <!-- ── HISTORY PAGE ──────────────────────────────────────────── -->
+    <div id="page-history" class="page">
+      <div class="page-header">
+        <div class="page-title">История заявок</div>
+        <div class="page-sub">Все предсказания, сохранённые в базе данных</div>
+      </div>
+
+      <div class="stats-row" id="stats-row">
+        <div class="stat-card amber">
+          <div class="stat-label">ВСЕГО ЗАЯВОК</div>
+          <div class="stat-value" id="stat-total">—</div>
+        </div>
+        <div class="stat-card green">
+          <div class="stat-label">ОДОБРЕНО</div>
+          <div class="stat-value" id="stat-approved">—</div>
+          <div class="stat-sub" id="stat-approved-pct"></div>
+        </div>
+        <div class="stat-card red">
+          <div class="stat-label">ОТКАЗАНО</div>
+          <div class="stat-value" id="stat-rejected">—</div>
+        </div>
+        <div class="stat-card blue">
+          <div class="stat-label">ВЫСОКИЙ РИСК ФРОДА</div>
+          <div class="stat-value" id="stat-fraud">—</div>
+        </div>
+      </div>
+
+      <div class="history-toolbar">
+        <select class="filter-select" id="filter-decision" onchange="loadHistory()">
+          <option value="">Все решения</option>
+          <option value="Approved">Approved</option>
+          <option value="Rejected">Rejected</option>
+          <option value="Review Required">Review Required</option>
+        </select>
+        <select class="filter-select" id="filter-fraud" onchange="loadHistory()">
+          <option value="">Все риски</option>
+          <option value="Low">Low fraud</option>
+          <option value="Medium">Medium fraud</option>
+          <option value="High">High fraud</option>
+        </select>
+        <button class="btn-refresh" onclick="loadHistory(); loadStats()">↻ Обновить</button>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+          <tr>
+            <th>REQUEST ID</th>
+            <th>ДАТА</th>
+            <th>ВОЗРАСТ</th>
+            <th>РЕЙТИНГ</th>
+            <th>СУММА</th>
+            <th>DTI</th>
+            <th>РЕШЕНИЕ</th>
+            <th>ВЕРОЯТН.</th>
+            <th>ФРОД</th>
+            <th>ОБРАБОТКА</th>
+          </tr>
+          </thead>
+          <tbody id="history-tbody">
+          <tr><td colspan="10"><div class="empty-state"><div class="empty-icon">≡</div>Загрузка данных...</div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div><!-- /page-history -->
+
+  </main>
+</div><!-- /screen-app -->
+
+<script>
+  // ══════════════════════════════════════════════════════════════════
+  // CONFIG — поменяй при деплое
+  // ══════════════════════════════════════════════════════════════════
+  const API_BASE = 'http://localhost:3000/api';
+  const WS_URL   = 'http://localhost:3000';
+
+  // ══════════════════════════════════════════════════════════════════
+  // STATE
+  // ══════════════════════════════════════════════════════════════════
+  let token    = localStorage.getItem('lg_token') || null;
+  let user     = JSON.parse(localStorage.getItem('lg_user') || 'null');
+  let socket   = null;
+  let socketId = null;
+
+  // ══════════════════════════════════════════════════════════════════
+  // INIT
+  // ══════════════════════════════════════════════════════════════════
+  // Глобальный перехватчик 401
+  const _fetch = window.fetch;
+  window.fetch = async function(...args) {
+    const r = await _fetch(...args);
+    if (r.status === 401) {
+      const url = typeof args[0] === 'string' ? args[0] : '';
+      // Не разлогиниваем на /login и /register
+      if (!url.includes('/auth/login') && !url.includes('/auth/register') && !url.includes('/auth/me')) {
+        logout();
+        toast('error', 'Сессия истекла. Войдите снова.');
+      }
+    }
+    return r;
+  };
+
+  document.addEventListener('DOMContentLoaded', () => {
+    if (token && user) {
+      enterApp();
+    }
+  });
+
+  // ══════════════════════════════════════════════════════════════════
+  // AUTH
+  // ══════════════════════════════════════════════════════════════════
+  function toggleAuthForm() {
+    const fl = document.getElementById('form-login');
+    const fr = document.getElementById('form-register');
+    fl.style.display = fl.style.display === 'none' ? 'block' : 'none';
+    fr.style.display = fr.style.display === 'none' ? 'block' : 'none';
+    document.getElementById('login-error').style.display = 'none';
+  }
+
+  async function handleLogin() {
+    const username = document.getElementById('login-username').value.trim();
+    const password = document.getElementById('login-password').value;
+    if (!username || !password) return showLoginError('Заполните все поля');
+
+    try {
+      const r = await fetch(`${API_BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+      const d = await r.json();
+      if (!r.ok) return showLoginError(d.error || 'Ошибка входа');
+      saveAuth(d.token, d.user);
+      enterApp();
+    } catch {
+      showLoginError('Сервер недоступен. Убедитесь что DSS запущен.');
+    }
+  }
+
+  async function handleRegister() {
+    const username = document.getElementById('reg-username').value.trim();
+    const email    = document.getElementById('reg-email').value.trim();
+    const password = document.getElementById('reg-password').value;
+    if (!username || !email || !password) return showLoginError('Заполните все поля');
+
+    try {
+      const r = await fetch(`${API_BASE}/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, email, password }),
+      });
+      const d = await r.json();
+      if (!r.ok) return showLoginError(d.error || 'Ошибка регистрации');
+      toast('success', 'Аккаунт создан! Войдите в систему.');
+      toggleAuthForm();
+    } catch {
+      showLoginError('Сервер недоступен.');
+    }
+  }
+
+  function showLoginError(msg) {
+    const el = document.getElementById('login-error');
+    el.textContent = msg;
+    el.style.display = 'block';
+  }
+
+  function saveAuth(t, u) {
+    token = t; user = u;
+    localStorage.setItem('lg_token', t);
+    localStorage.setItem('lg_user', JSON.stringify(u));
+  }
+
+  function logout() {
+    token = null; user = null;
+    localStorage.removeItem('lg_token');
+    localStorage.removeItem('lg_user');
+    if (socket) socket.disconnect();
+    document.getElementById('screen-app').classList.remove('active');
+    document.getElementById('screen-login').classList.add('active');
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  // APP ENTRY
+  // ══════════════════════════════════════════════════════════════════
+  async function enterApp() {
+    document.getElementById('screen-login').classList.remove('active');
+    document.getElementById('screen-app').classList.add('active');
+
+    document.getElementById('user-name').textContent   = user.username;
+    document.getElementById('user-role').textContent   = user.role;
+    document.getElementById('user-avatar').textContent = user.username[0].toUpperCase();
+
+    connectWebSocket();
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  // WEBSOCKET
+  // ══════════════════════════════════════════════════════════════════
+  function connectWebSocket() {
+    socket = io(WS_URL, { transports: ['websocket', 'polling'] });
+
+    socket.on('connect', () => {
+      setWsStatus('connected', 'WebSocket');
+    });
+
+    socket.on('connected', (data) => {
+      socketId = data.socket_id;
+      setWsStatus('connected', `ID: ${socketId.slice(0,8)}…`);
+    });
+
+    socket.on('disconnect', () => {
+      socketId = null;
+      setWsStatus('error', 'Отключён');
+    });
+
+    socket.on('connect_error', () => {
+      setWsStatus('error', 'Ошибка WS');
+    });
+
+    socket.on('prediction_result', (result) => {
+      showResult(result);
+    });
+  }
+
+  function setWsStatus(cls, label) {
+    const dot = document.getElementById('ws-dot');
+    const lbl = document.getElementById('ws-label');
+    dot.className = 'ws-dot ' + cls;
+    lbl.textContent = label;
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  // NAVIGATION
+  // ══════════════════════════════════════════════════════════════════
+  function showPage(name, el) {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    document.getElementById('page-' + name).classList.add('active');
+    if (el) el.classList.add('active');
+
+    if (name === 'history') { loadStats(); loadHistory(); }
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  // FORM COLLECT
+  // ══════════════════════════════════════════════════════════════════
+  const FIELDS = [
+    'age','occupation','marital_status','dependents','residential_status','address_duration',
+    'credit_score','income_level','loan_amount_requested','loan_term','purpose_of_loan',
+    'collateral','interest_rate','previous_loans','existing_liabilities',
+    'application_behavior','location_of_application','change_in_behavior',
+    'time_of_transaction','account_activity','payment_behavior',
+    'blacklists','employment_verification','past_financial_malpractices',
+    'device_information','social_media_footprint','consistency_in_data','referral',
+  ];
+
+  const NUM_FIELDS = new Set([
+    'age','dependents','address_duration','credit_score','income_level',
+    'loan_amount_requested','loan_term','interest_rate','previous_loans','existing_liabilities'
+  ]);
+
+  function collectForm() {
+    const data = {};
+    let valid = true;
+
+    for (const f of FIELDS) {
+      const el = document.getElementById('f_' + f);
+      if (!el) continue;
+      const val = el.value.trim();
+      if (!val) {
+        el.classList.add('invalid');
+        valid = false;
+      } else {
+        el.classList.remove('invalid');
+        data[f] = NUM_FIELDS.has(f) ? parseFloat(val) : val;
+      }
+    }
+    return valid ? data : null;
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  // PREDICT
+  // ══════════════════════════════════════════════════════════════════
+  async function submitPrediction() {
+    const data = collectForm();
+    if (!data) { toast('error', 'Заполните все обязательные поля'); return; }
+    if (!socketId) { toast('error', 'WebSocket не подключён. Обновите страницу.'); return; }
+
+    const btn = document.getElementById('btn-submit');
+    btn.disabled = true;
+
+    // Show processing state
+    document.getElementById('result-pending').style.display    = 'none';
+    document.getElementById('result-processing').style.display = 'block';
+    document.getElementById('result-data').style.display       = 'none';
+
+    try {
+      const r = await fetch(`${API_BASE}/predict`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+          'X-Socket-Id': socketId,
+        },
+        body: JSON.stringify({ ...data, socket_id: socketId }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || JSON.stringify(d.errors));
+      document.getElementById('processing-id').textContent = d.request_id;
+      // Результат придёт через WebSocket → showResult()
+    } catch (err) {
+      toast('error', 'Ошибка: ' + err.message);
+      document.getElementById('result-pending').style.display    = 'block';
+      document.getElementById('result-processing').style.display = 'none';
+      btn.disabled = false;
+    }
+  }
+
+  function showResult(r) {
+    document.getElementById('result-processing').style.display = 'none';
+    document.getElementById('btn-submit').disabled = false;
+
+    const fd = document.getElementById('result-data');
+    fd.style.display = 'block';
+
+    const decisionClass = {
+      'Approved': 'approved',
+      'Rejected': 'rejected',
+      'Review Required': 'review',
+      'Error': 'rejected',
+    }[r.final_decision] || 'rejected';
+
+    const decisionIcon = { 'Approved':'✓', 'Rejected':'✕', 'Review Required':'⚠', 'Error':'✕' }[r.final_decision] || '?';
+
+    if (r.error) {
+      fd.innerHTML = `<div class="decision-badge rejected">${decisionIcon} Ошибка обработки</div>
+    <div style="font-size:12px;color:var(--muted);margin-top:8px">${r.error}</div>`;
+      return;
+    }
+
+    const loanPct  = Math.round((r.loan_approval_prob  || 0) * 100);
+    const fraudPct = Math.round((r.fraud_probability   || 0) * 100);
+    const fraudClass = { Low:'low', Medium:'medium', High:'high' }[r.fraud_risk] || 'low';
+    const fraudIcon  = { Low:'●', Medium:'▲', High:'⬥' }[r.fraud_risk] || '●';
+
+    const flagsHtml = (r.fraud_flags || []).length
+            ? `<div class="result-section-title">ПОВЕДЕНЧЕСКИЕ ФЛАГИ</div>
+       <div class="flags-list">${(r.fraud_flags||[]).map(f=>`<div class="flag-item">${f}</div>`).join('')}</div>`
+            : '';
+
+    const reasonsHtml = (r.rejection_reasons || []).length
+            ? `<div class="result-section-title" style="margin-top:12px">ПРИЧИНЫ ОТКАЗА</div>
+       <div class="reasons-list">${(r.rejection_reasons||[]).map(rr=>`<div class="reason-item">${rr}</div>`).join('')}</div>`
+            : '';
+
+    fd.innerHTML = `
+    <div class="decision-badge ${decisionClass}">${decisionIcon}&nbsp; ${r.final_decision}</div>
+
+    <div class="prob-bar-wrap">
+      <div class="prob-bar-label"><span>Вероятность одобрения</span><span>${loanPct}%</span></div>
+      <div class="prob-bar-track"><div class="prob-bar-fill loan" style="width:${loanPct}%"></div></div>
+    </div>
+
+    <div class="fraud-badge ${fraudClass}">${fraudIcon}&nbsp; Риск мошенничества: ${r.fraud_risk} — ${fraudPct}%</div>
+
+    <div class="prob-bar-wrap">
+      <div class="prob-bar-label"><span>Вероятность фрода</span><span>${fraudPct}%</span></div>
+      <div class="prob-bar-track"><div class="prob-bar-fill fraud" style="width:${fraudPct}%"></div></div>
+    </div>
+
+    <div class="result-metrics">
+      <div class="metric-row">
+        <span class="metric-label">DTI коэффициент</span>
+        <span class="metric-value" style="color:${(r.dti_ratio||0)>5?'var(--red)':'var(--text)'}">${(r.dti_ratio||0).toFixed(3)}</span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-label">Уверенность модели</span>
+        <span class="metric-value">${Math.round((r.confidence_score||0)*100)}%</span>
+      </div>
+    </div>
+
+    ${flagsHtml}
+    ${reasonsHtml}
+
+    <div class="result-meta">
+      <span>${(r.request_id||'').slice(0,20)}…</span>
+      <span>${r.processing_ms ? r.processing_ms+'ms' : ''}</span>
+    </div>
+  `;
+
+    // Animate bars after paint
+    setTimeout(() => {
+      const fills = fd.querySelectorAll('.prob-bar-fill');
+      fills[0] && (fills[0].style.width = loanPct  + '%');
+      fills[1] && (fills[1].style.width = fraudPct + '%');
+    }, 50);
+
+    const label = { 'Approved':'Кредит одобрен', 'Rejected':'Кредит отклонён', 'Review Required':'Требуется проверка' }[r.final_decision] || r.final_decision;
+    const ttype = { 'Approved':'success', 'Rejected':'error', 'Review Required':'info' }[r.final_decision] || 'info';
+    toast(ttype, label);
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  // HISTORY
+  // ══════════════════════════════════════════════════════════════════
+  async function loadStats() {
+    try {
+      const r = await fetch(`${API_BASE}/history/stats`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      const d = await r.json();
+      if (r.status === 401) { return; }
+      document.getElementById('stat-total').textContent    = d.total    || 0;
+      document.getElementById('stat-approved').textContent = d.approved || 0;
+      document.getElementById('stat-rejected').textContent = d.rejected || 0;
+      document.getElementById('stat-fraud').textContent    = d.high_fraud || 0;
+      const total = parseInt(d.total) || 1;
+      const pct = Math.round((parseInt(d.approved)||0) / total * 100);
+      document.getElementById('stat-approved-pct').textContent = `${pct}% от всех заявок`;
+    } catch { /* offline */ }
+  }
+
+  async function loadHistory() {
+    const decision  = document.getElementById('filter-decision').value;
+    const fraudRisk = document.getElementById('filter-fraud').value;
+    let url = `${API_BASE}/history?limit=100`;
+    if (decision)  url += `&decision=${encodeURIComponent(decision)}`;
+    if (fraudRisk) url += `&fraud_risk=${encodeURIComponent(fraudRisk)}`;
+
+    const tbody = document.getElementById('history-tbody');
+    tbody.innerHTML = `<tr><td colspan="10"><div class="empty-state"><div class="spinner" style="margin:0 auto 8px"></div>Загрузка...</div></td></tr>`;
+
+    try {
+      const r = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+      const d = await r.json();
+      if (r.status === 401) {
+        tbody.innerHTML = '<tr><td colspan="10"><div class="empty-state"><div class="empty-icon">🔒</div>Требуется авторизация. Войдите снова.</div></td></tr>';
+        return;
+      }
+      const rows = d.items || [];
+
+      if (!rows.length) {
+        tbody.innerHTML = `<tr><td colspan="10"><div class="empty-state"><div class="empty-icon">≡</div>Заявки не найдены</div></td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = rows.map(row => {
+        const dc = { 'Approved':'badge-approved','Rejected':'badge-rejected','Review Required':'badge-review' }[row.final_decision]||'badge-rejected';
+        const fc = { 'Low':'badge-low','Medium':'badge-medium','High':'badge-high' }[row.fraud_risk]||'badge-low';
+        const dt = new Date(row.created_at).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+        const amt = row.loan_amount ? Number(row.loan_amount).toLocaleString('ru-RU') : '—';
+        const prob = row.loan_approval_prob ? Math.round(row.loan_approval_prob*100)+'%' : '—';
+        return `<tr>
+        <td class="td-mono td-muted">${(row.request_id||'').slice(4,16)}</td>
+        <td class="td-mono td-muted">${dt}</td>
+        <td>${row.age||'—'}</td>
+        <td class="td-mono">${row.credit_score||'—'}</td>
+        <td class="td-mono">${amt}</td>
+        <td class="td-mono">${row.dti_ratio||'—'}</td>
+        <td><span class="badge ${dc}">${row.final_decision||'—'}</span></td>
+        <td class="td-mono">${prob}</td>
+        <td><span class="badge ${fc}">${row.fraud_risk||'—'}</span></td>
+        <td class="td-mono td-muted">${row.processing_ms ? row.processing_ms+'ms' : '—'}</td>
+      </tr>`;
+      }).join('');
+    } catch {
+      tbody.innerHTML = `<tr><td colspan="10"><div class="empty-state"><div class="empty-icon">⚠</div>Не удалось загрузить данные.<br>Убедитесь что DSS запущен.</div></td></tr>`;
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  // TOAST
+  // ══════════════════════════════════════════════════════════════════
+  function toast(type, msg) {
+    const icons = { success:'✓', error:'✕', info:'◈' };
+    const el = document.createElement('div');
+    el.className = `toast ${type}`;
+    el.innerHTML = `<span>${icons[type]||'◈'}</span><span>${msg}</span>`;
+    document.getElementById('toast-container').appendChild(el);
+    setTimeout(() => el.remove(), 4000);
+  }
+</script>
+</body>
+</html>

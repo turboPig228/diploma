@@ -1,0 +1,22 @@
+# ─── Server ──────────────────────────────────────────────────────────────────
+PORT=3000
+NODE_ENV=development
+
+# ─── JWT ─────────────────────────────────────────────────────────────────────
+JWT_SECRET=loanguard_diploma_secret_2026
+JWT_EXPIRES_IN=24h
+
+# ─── PostgreSQL ───────────────────────────────────────────────────────────────
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=loan_approval
+DB_USER=postgres
+DB_PASSWORD=123qwe
+
+# ─── Kafka ───────────────────────────────────────────────────────────────────
+KAFKA_BROKERS=localhost:9092
+KAFKA_CLIENT_ID=loan-dss-server
+KAFKA_INPUT_TOPIC=loan-ml-input
+KAFKA_OUTPUT_TOPIC=loan-ml-output
+KAFKA_LOGS_TOPIC=loan-ml-logs
+KAFKA_GROUP_ID=dss-consumer-group
