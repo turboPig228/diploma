@@ -728,10 +728,7 @@
                     <option>No</option><option>Yes</option>
                   </select>
                 </div>
-                <div class="form-field">
-                  <label>ВРЕМЯ ТРАНЗАКЦИИ (ЧЧ:ММ)</label>
-                  <input type="text" id="f_time_of_transaction" placeholder="10:30" maxlength="5"/>
-                </div>
+
                 <div class="form-field">
                   <label>АКТИВНОСТЬ СЧЁТА</label>
                   <select id="f_account_activity">
@@ -1110,7 +1107,7 @@
     'credit_score','income_level','loan_amount_requested','loan_term','purpose_of_loan',
     'collateral','interest_rate','previous_loans','existing_liabilities',
     'application_behavior','location_of_application','change_in_behavior',
-    'time_of_transaction','account_activity','payment_behavior',
+    'account_activity','payment_behavior',
     'blacklists','employment_verification','past_financial_malpractices',
     'device_information','social_media_footprint','consistency_in_data','referral',
   ];
@@ -1121,6 +1118,12 @@
   ]);
 
   function collectForm() {
+    // Автоматически подставляем текущее время транзакции
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2, '0');
+    const mm = String(now.getMinutes()).padStart(2, '0');
+    document.getElementById && (window._autoTime = `${hh}:${mm}`);
+
     const data = {};
     let valid = true;
 
@@ -1163,7 +1166,7 @@
           'Authorization': `Bearer ${token}`,
           'X-Socket-Id': socketId,
         },
-        body: JSON.stringify({ ...data, socket_id: socketId }),
+        body: JSON.stringify({ ...data, socket_id: socketId, time_of_transaction: window._autoTime || '12:00' }),
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || JSON.stringify(d.errors));
